@@ -1,0 +1,122 @@
+name: Multi-Platform Matrix Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  matrix-build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        # This creates 3 jobs (one for each OS)
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: matrix-7dc5f05
+        run: |
+          echo "Building for ${{ matrix.os }}"
+          echo "Job started at $(date)"
+      
+      - name: Display system information
+        run: |
+          echo "OS: ${{ matrix.os }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Architecture: ${{ runner.arch }}"
+        shell: bash
+      
+      - name: Generate build artifact
+        run: |
+          mkdir -p build-output
+          echo "Build Information" > build-output/build-info.txt
+          echo "==================" >> build-output/build-info.txt
+          echo "OS: ${{ matrix.os }}" >> build-output/build-info.txt
+          echo "Runner OS: ${{ runner.os }}" >> build-output/build-info.txt
+          echo "Build Time: $(date)" >> build-output/build-info.txt
+          echo "Runner: ${{ runner.name }}" >> build-output/build-info.txt
+          echo "Architecture: ${{ runner.arch }}" >> build-output/build-info.txt
+          echo "" >> build-output/build-info.txt
+          echo "Build completed successfully!" >> build-output/build-info.txt
+        shell: bash
+      
+      - name: Create additional build artifacts
+        run: |
+          # Create a JSON artifact with build metadata
+          cat > build-output/metadata.json << EOF
+          {
+            "os": "${{ matrix.os }}",
+            "build_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "runner_os": "${{ runner.os }}",
+            "github_sha": "${{ github.sha }}",
+            "workflow_run_id": "${{ github.run_id }}"
+          }
+          EOF
+        shell: bash
+      
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-7dc5f05-${{ matrix.os }}
+          path: build-output/
+          retention-days: 30
+          if-no-files-found: error
+      
+      - name: Display artifact information
+        run: |
+          echo "Artifact uploaded successfully!"
+          echo "Artifact name: build-7dc5f05-${{ matrix.os }}"
+          ls -la build-output/
+        shell: bash
+
+  # Optional: Collect all artifacts in a final job
+  collect-artifacts:
+    name: Collect All Build Artifacts
+    needs: matrix-build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-builds
+      
+      - name: Display all artifacts
+        run: |
+          echo "All build artifacts collected:"
+          ls -R all-builds/
+          
+          echo ""
+          echo "Summary of builds:"
+          find all-builds -name "build-info.txt" -exec echo "---" \; -exec cat {} \;
+      
+      - name: Create combined summary
+        run: |
+          echo "Multi-Platform Build Summary" > build-summary.txt
+          echo "=============================" >> build-summary.txt
+          echo "" >> build-summary.txt
+          echo "Total builds: $(find all-builds -name "metadata.json" | wc -l)" >> build-summary.txt
+          echo "" >> build-summary.txt
+          
+          # List all successful builds
+          for file in all-builds/*/metadata.json; do
+            echo "Build: $(dirname $file | xargs basename)" >> build-summary.txt
+            cat "$file" >> build-summary.txt
+            echo "" >> build-summary.txt
+          done
+          
+          cat build-summary.txt
+      
+      - name: Upload combined summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-7dc5f05-summary
+          path: build-summary.txt
+          retention-days: 30
